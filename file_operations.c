@@ -29,18 +29,12 @@ void write_tree_recursive(BitStream *stream, HuffmanNode *root) {
     if (root == NULL) return;
     
     if (root->left == NULL && root->right == NULL) {
-        printf("ПИШУ ЛИСТ: символ '%c' (ASCII %d), биты: ", 
-               (root->symbol >= 32 && root->symbol < 127) ? root->symbol : '.', 
-               root->symbol);
         write_bit(stream, 1);
         for (int i = 7; i >= 0; i--) {
             int bit = (root->symbol >> i) & 1;
-            printf("%d", bit);
             write_bit(stream, bit);
         }
-        printf("\n");
     } else {
-        printf("ПИШУ УЗЕЛ\n");
         write_bit(stream, 0);
         write_tree_recursive(stream, root->left);
         write_tree_recursive(stream, root->right);
@@ -61,19 +55,14 @@ HuffmanNode* read_tree_recursive(BitStream *stream) {
     if (bit == 1) {
         // ЛИСТ
         unsigned char symbol = 0;
-        printf("ЧИТАЮ ЛИСТ: биты символа: ");
         for (int i = 0; i < 8; i++) {
             bit = read_bit(stream);
             if (bit == -1) return NULL;
-            printf("%d", bit);
             symbol = (symbol << 1) | bit;
         }
-        printf(" -> символ '%c' (ASCII %d)\n", 
-               (symbol >= 32 && symbol < 127) ? symbol : '.', symbol);
         return create_node(symbol, 0);
     } else {
         // УЗЕЛ
-        printf("ЧИТАЮ УЗЕЛ\n");
         HuffmanNode *node = create_node(0, 0);
         node->left = read_tree_recursive(stream);
         node->right = read_tree_recursive(stream);
@@ -87,7 +76,6 @@ HuffmanNode* read_tree_header(BitStream *stream) {
     
     // сброс битового буфера после чтения дерева
     if (stream != NULL && stream->bit_count > 0) {
-        printf("Сброс битового буфера после чтения дерева\n");
         stream->bit_count = 0;
         stream->buffer = 0;
     }
@@ -116,7 +104,7 @@ void encode_file(const char *input_file, const char *output_file) {
     unsigned char buffer[256];
     generate_codes(root, codes, buffer, 0);
 
-    
+    print_table(frequencies, codes);
     
     // Открытие файлов
     FILE *input = fopen(input_file, "rb");
@@ -171,6 +159,9 @@ printf("   Размер исходного файла: %ld байт (запис�
     printf("  Размер исходного файла: %ld байт\n", input_size);
     printf("  Уникальных символов: %d\n", unique_symbols);
     printf("  Закодировано бит: %ld\n", encoded_bits);
+
+    print_compression_ratio(input_file, output_file);
+
     printf("  Результат: %s -> %s\n", input_file, output_file);
 }
 
@@ -207,14 +198,11 @@ void decode_file(const char *input_file, const char *output_file) {
     // Декодирование: обход дерева по битам
     printf("=== НАЧАЛО ДЕКОДИРОВАНИЯ ДАННЫХ ===\n");
 while ((bit = read_bit(input)) != -1 && decoded_bytes < expected_bytes) {
-    printf("БИТ %d: ", bit);
     
     if (bit == 0) {
         current = current->left;
-        printf("влево -> ");
     } else {
         current = current->right;
-        printf("вправо -> ");
     }
     
     if (current == NULL) {
@@ -223,15 +211,11 @@ while ((bit = read_bit(input)) != -1 && decoded_bytes < expected_bytes) {
     }
     
     if (current->left == NULL && current->right == NULL) {
-        printf("СИМВОЛ '%c' (ASCII %d)\n", 
-               (current->symbol >= 32 && current->symbol < 127) ? current->symbol : '.',
-               current->symbol);
+        
         fputc(current->symbol, output);
         decoded_bytes++;
         current = root;
-    } else {
-        printf("узел\n");
-    }
+    } 
 }
 printf("=== КОНЕЦ ДЕКОДИРОВАНИЯ ДАННЫХ ===\n");
     
@@ -243,4 +227,70 @@ printf("=== КОНЕЦ ДЕКОДИРОВАНИЯ ДАННЫХ ===\n");
     printf("Декодирование завершено успешно!\n");
     printf("  Декодировано байт: %ld\n", decoded_bytes);
     printf("  Результат: %s -> %s\n", input_file, output_file);
+}
+
+// Таблица для пользователя
+   void print_table(unsigned int *frequencies, HuffmanCode *codes) {
+    printf("\n");
+    printf("┌──────────┬───────┬─────────────────┬──────────┬──────────┐\n");
+    printf("│  Символ  │ ASCII │      Код        │  Длина   │  Частота │\n");
+    printf("├──────────┼───────┼─────────────────┼──────────┼──────────┤\n");
+    
+    // Создаем массив для сортировки
+    int indices[256], count = 0;
+    for (int i = 0; i < 256; i++) {
+        if (frequencies[i] > 0) indices[count++] = i;
+    }
+    
+    // Сортировка по убыванию частоты
+    for (int i = 0; i < count - 1; i++) {
+        for (int j = i + 1; j < count; j++) {
+            if (frequencies[indices[j]] > frequencies[indices[i]]) {
+                int helper = indices[i];
+                indices[i] = indices[j];
+                indices[j] = helper;
+            }
+        }
+    }
+    
+    // Вывод таблицы
+    for (int idx = 0; idx < count; idx++) {
+        int i = indices[idx];
+        char ch = (i >= 32 && i < 127) ? (char)i : '.';
+        
+        printf("│   '%c'    │ %5d │ ", ch, i);
+        
+        // Вывод кода
+        for (int j = 0; j < codes[i].code_length; j++) {
+            printf("%d", codes[i].code[j]);
+        }
+        
+        // Выравнивание пробелами
+        for (int j = codes[i].code_length; j < 15; j++) printf(" ");
+        
+        printf("│ %8d │ %8d │\n", codes[i].code_length, frequencies[i]);
+    }
+    
+    printf("└──────────┴───────┴─────────────────┴──────────┴──────────┘\n");
+}
+
+// Вывод коэффициента сжатия
+void print_compression_ratio(const char *input_file, const char *output_file) {
+    FILE *in = fopen(input_file, "rb");
+    if (!in) return;
+    fseek(in, 0, SEEK_END);
+    long input_size = ftell(in);
+    fclose(in);
+    
+    FILE *out = fopen(output_file, "rb");
+    if (!out) return;
+    fseek(out, 0, SEEK_END);
+    long output_size = ftell(out);
+    fclose(out);
+    
+    double ratio = (input_size > 0) ? 
+                   100.0 * (1.0 - (double)output_size / input_size) : 0.0;
+    
+    printf("\nКоэффициент сжатия: %.2f%%\n", ratio);
+    printf("(%ld байт -> %ld байт)\n", input_size, output_size);
 }
