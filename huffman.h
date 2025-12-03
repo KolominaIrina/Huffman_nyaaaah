@@ -32,7 +32,6 @@ HuffmanNode* create_node(unsigned char symbol, unsigned int frequency);
 MinHeap* create_min_heap(int capacity);
 void insert_min_heap(MinHeap *heap, HuffmanNode *node);
 HuffmanNode* extract_min(MinHeap *heap);
-void build_min_heap(MinHeap *heap);
 
 HuffmanNode* build_huffman_tree(unsigned int *frequencies);
 void generate_codes(HuffmanNode *root, HuffmanCode *codes, unsigned char *buffer, int depth);

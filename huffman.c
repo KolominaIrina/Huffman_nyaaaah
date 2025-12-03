@@ -68,14 +68,6 @@ HuffmanNode* extract_min(MinHeap *heap) {
     return min;
 }
 
-// Построение кучи из массива узлов
-void build_min_heap(MinHeap *heap) {
-    int n = heap->size - 1;
-    for (int i = (n-1)/2; i >= 0; i--) {
-        min_heapify(heap, i);
-    }
-}
-
 // Создание нового узла дерева
 HuffmanNode* create_node(unsigned char symbol, unsigned int frequency) {
     HuffmanNode *node = (HuffmanNode*)malloc(sizeof(HuffmanNode));
